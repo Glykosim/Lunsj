@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <title>Lunsjpausebooking</title>
+  <style>
+    body {
+      font-family: Aptos, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+    /* Header: Overskrift midtstilt, logo til høyre */
+    header {
+      position: relative;
+      height: 80px; /* Fast høyde for å unngå overlapp */
+      line-height: 60px; /* Juster gjerne til 80px for perfekt vertikal sentrering */
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo {
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 90px;
+    }
+    .container {
+      width: 90%;
+      max-width: 1000px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0;
+      padding: 0;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    .controls label {
+      font-weight: bold;
+    }
+    .controls input[type="date"] {
+      padding: 5px;
+      margin: 5px 0 15px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 8px 12px;
+      margin-right: 10px;
+      margin-top: 5px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background: #007acc;
+      color: #fff;
+    }
+    button:hover {
+      background: #005fa3;
+    }
+    #schedule {
+      margin-bottom: 20px;
+    }
+    .time-slot {
+      margin: 15px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .slot-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .bookings {
+      display: flex;
+      gap: 10px;
+    }
+    .booking {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      text-align: center;
+      cursor: pointer;
+      background: #e0ffe0;
+    }
+    .booking.booked {
+      background: #ffe0e0;
+      cursor: default;
+    }
+    .booking:hover:not(.booked) {
+      background: #c0f0c0;
+    }
+    #confirmation {
+      padding: 10px;
+      margin-top: 10px;
+      border: 1px solid #007acc;
+      background: #e6f2ff;
+      border-radius: 4px;
+      display: none;
+    }
+    /* Div for bookingstatus-melding */
+    #booking-status {
+      text-align: center;
+      color: red;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    /* Knapp for utviklermodus – skjult som standard */
+    #dev-mode-btn {
+      display: none;
+      margin: 10px auto;
+      padding: 8px 12px;
+      background: #d9534f;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #dev-mode-btn:hover {
+      background: #c9302c;
+    }
+    /* Modal-stiler */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 10;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+      background-color: #fefefe;
+      margin: 10% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 90%;
+      max-width: 500px;
+      border-radius: 8px;
+      position: relative;
+    }
+    .close {
+      color: #aaa;
+      position: absolute;
+      right: 15px;
+      top: 10px;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .close:hover,
+    .close:focus {
+      color: black;
+      text-decoration: none;
+    }
+    .modal label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .modal input[type="text"],
+    .modal select {
+      width: 100%;
+      padding: 5px;
+      margin-top: 5px;
+      box-sizing: border-box;
+    }
+
+  </style>
+</head>
+<body>
+  <!-- Header med midtstilt overskrift og logo til høyre -->
+  <header>
+    <h1>Lunsjpausebooking</h1>
+    <img src="logo.png" alt="Logo" class="logo">
+  </header>
+
+  <div class="container">
+    <div class="controls">
+      <label for="booking-date">Velg dato:</label>
+      <input type="date" id="booking-date">
+      <!-- Bytteknappen -->
+      <button id="switch-btn">Bytt lunsjpause</button>
+    </div>
+    <div id="schedule">
+      <!-- Tidsrommene lages dynamisk -->
+    </div>
+    <div id="confirmation"></div>
+  </div>
+  
+  <!-- Div for bookingstatus-meldinger -->
+  <div id="booking-status"></div>
+  
+  <!-- Knapp for å slå av utviklermodus (vises kun når utviklermodus er aktivert) -->
+  <button id="dev-mode-btn">Slå av utvikler-modus</button>
+
+  <!-- Felles modal for booking, bytte og redigering -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="modal-close">&times;</span>
+      <div id="modal-body">
+        <!-- Dynamisk innhold -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Globale variabler for utviklermodus og tastaturbuffer
+    let developerMode = false;
+    let keyBuffer = "";
+
+    // Global keydown-håndtering (utenfor inputfelter)
+    document.addEventListener("keydown", function(e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (!developerMode) {
+        keyBuffer += e.key;
+        if (keyBuffer.length > 10) {
+          keyBuffer = keyBuffer.slice(-10);
+        }
+        if (keyBuffer.endsWith("xxx")) {
+          developerMode = true;
+          document.getElementById("dev-mode-btn").style.display = "block";
+          keyBuffer = ""; // Nullstill buffer ved aktivering
+          updateBookingStatus();
+          renderSchedule(document.getElementById("booking-date").value);
+        }
+      }
+    });
+
+    // Lytt etter klikk på "Slå av utvikler-modus"-knappen
+    document.getElementById("dev-mode-btn").addEventListener("click", function() {
+      developerMode = false;
+      this.style.display = "none";
+      keyBuffer = ""; // Nullstill buffer slik at en enkelt "x" ikke reaktiverer modus
+      updateBookingStatus();
+      renderSchedule(document.getElementById("booking-date").value);
+    });
+
+    // Definer tilgjengelige tidsrom
+    const timeSlots = [
+      "11:00 - 11:30",
+	  "11:30 - 12:00",
+      "12:00 - 12:30",
+      "12:30 - 13:00"
+    ];
+
+    // Hent lagret schedule for en gitt dato fra localStorage
+    function loadSchedule(date) {
+      const data = localStorage.getItem("schedule_" + date);
+      if (data) {
+        return JSON.parse(data);
+      } else {
+        const schedule = {};
+        timeSlots.forEach(slot => {
+          schedule[slot] = ["", ""]; // to plasser per tidsrom
+        });
+        return schedule;
+      }
+    }
+
+    // Lagre schedule for en gitt dato til localStorage
+    function saveSchedule(date, schedule) {
+      localStorage.setItem("schedule_" + date, JSON.stringify(schedule));
+    }
+
+    // Vis en bekreftelsesmelding
+    function showConfirmation(message) {
+      const conf = document.getElementById("confirmation");
+      conf.textContent = message;
+      conf.style.display = "block";
+      setTimeout(() => {
+        conf.style.display = "none";
+      }, 3000);
+    }
+
+    // Oppdater bookingstatus-meldingen for dagens booking
+    function updateBookingStatus() {
+      const bookingStatus = document.getElementById("booking-status");
+      const dateInput = document.getElementById("booking-date");
+      const selectedDate = dateInput.value;
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      
+      if (developerMode) {
+        bookingStatus.textContent = "Utvikler-modus aktivert – tidsbegrensninger slått av.";
+        return;
+      }
+      
+      if (selectedDate < todayStr) {
+        bookingStatus.textContent = "Lunsjpause for denne dagen er avviklet.";
+      } else if (selectedDate === todayStr) {
+        const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+        const endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 13, 00, 0);
+        if (now < startTime) {
+          bookingStatus.textContent = "Det er ikke mulig å booke lunsjpause før klokken 08:00 samme dag.";
+        } else if (now > endTime) {
+          bookingStatus.textContent = "Lunsjpause for i dag er avviklet.";
+        } else {
+          bookingStatus.textContent = "";
+        }
+      } else {
+        bookingStatus.textContent = "";
+      }
+    }
+
+    // Modal-hjelpefunksjoner
+    function showModal(contentHTML) {
+      document.getElementById("modal-body").innerHTML = contentHTML;
+      document.getElementById("modal").style.display = "block";
+    }
+    function hideModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+    document.getElementById("modal-close").addEventListener("click", hideModal);
+    window.addEventListener("click", function(event) {
+      const modal = document.getElementById("modal");
+      if (event.target == modal) {
+        hideModal();
+      }
+    });
+
+    // Sjekker om et navn allerede er booket for en gitt dato
+    function hasExistingBooking(schedule, name) {
+      for (let slot in schedule) {
+        for (let occupant of schedule[slot]) {
+          if (occupant.trim().toLowerCase() === name.toLowerCase()) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Render schedule for den valgte dato
+    function renderSchedule(date) {
+      const scheduleContainer = document.getElementById("schedule");
+      scheduleContainer.innerHTML = "";
+      const scheduleData = loadSchedule(date);
+
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      let bookingAllowed = false;
+      if (developerMode) {
+        bookingAllowed = true;
+      } else if (date === todayStr && now.getHours() >= 8 && now <= new Date(now.getFullYear(), now.getMonth(), now.getDate(), 13, 00, 0)) {
+        bookingAllowed = true;
+      }
+
+      timeSlots.forEach(slot => {
+        const slotDiv = document.createElement("div");
+        slotDiv.className = "time-slot";
+        const title = document.createElement("div");
+        title.className = "slot-title";
+        title.textContent = slot;
+        slotDiv.appendChild(title);
+
+        const bookingsDiv = document.createElement("div");
+        bookingsDiv.className = "bookings";
+
+        scheduleData[slot].forEach((booking, index) => {
+          const bookingDiv = document.createElement("div");
+          bookingDiv.className = "booking";
+          if (booking.trim() !== "") {
+            bookingDiv.classList.add("booked");
+            bookingDiv.textContent = booking;
+            // Ved dobbeltklikk redigeres booking
+            bookingDiv.addEventListener("dblclick", () => {
+              showEditModal(slot, index);
+            });
+          } else {
+            bookingDiv.textContent = "Ledig plass";
+            if (bookingAllowed) {
+              bookingDiv.addEventListener("click", () => {
+                showBookingModal(slot, index);
+              });
+            } else {
+              bookingDiv.style.background = "#ccc";
+              bookingDiv.style.cursor = "default";
+            }
+          }
+          bookingsDiv.appendChild(bookingDiv);
+        });
+        slotDiv.appendChild(bookingsDiv);
+        scheduleContainer.appendChild(slotDiv);
+      });
+
+      document.getElementById("switch-btn").disabled = !bookingAllowed;
+      updateBookingStatus();
+    }
+
+    // Funksjon for å booke en ledig plass via modal
+    function showBookingModal(slot, index) {
+      const content = `
+        <h3>Book: ${slot} – Plass ${index + 1}</h3>
+        <label>Skriv inn ditt navn:</label>
+        <input type="text" id="modal-name" placeholder="Ditt navn">
+        <br>
+        <button id="modal-save">Lagre</button>
+      `;
+      showModal(content);
+      const nameInput = document.getElementById("modal-name");
+      nameInput.focus();
+      nameInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          document.getElementById("modal-save").click();
+        }
+      });
+
+      document.getElementById("modal-save").addEventListener("click", function() {
+        const name = nameInput.value.trim();
+        if (!name) {
+          alert("Skriv inn navnet ditt!");
+          return;
+        }
+        const date = document.getElementById("booking-date").value;
+        const schedule = loadSchedule(date);
+        if (hasExistingBooking(schedule, name)) {
+          alert("Du har allerede booket en pause i dag.");
+          return;
+        }
+        schedule[slot][index] = name;
+        saveSchedule(date, schedule);
+        renderSchedule(date);
+        hideModal();
+        showConfirmation("Tiden er booket!");
+      });
+    }
+
+    // Funksjon for å redigere en eksisterende booking via dobbeltklikk
+    function showEditModal(slot, index) {
+      const date = document.getElementById("booking-date").value;
+      const schedule = loadSchedule(date);
+      const currentName = schedule[slot][index];
+      const content = `
+        <h3>Rediger booking: ${slot} – Plass ${index + 1}</h3>
+        <label>Endre navn:</label>
+        <input type="text" id="edit-name" value="${currentName}">
+        <br>
+        <button id="edit-save">Lagre endring</button>
+        <button id="delete-entry">Slett oppføring</button>
+      `;
+      showModal(content);
+      const editInput = document.getElementById("edit-name");
+      editInput.focus();
+      editInput.setSelectionRange(editInput.value.length, editInput.value.length);
+      editInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          document.getElementById("edit-save").click();
+        }
+      });
+
+      document.getElementById("edit-save").addEventListener("click", function() {
+        const newName = editInput.value.trim();
+        if (!newName) {
+          alert("Navnet kan ikke være tomt!");
+          return;
+        }
+        if (newName.toLowerCase() !== currentName.toLowerCase() && hasExistingBooking(schedule, newName)) {
+          alert("En booking med dette navnet finnes allerede.");
+          return;
+        }
+        schedule[slot][index] = newName;
+        saveSchedule(date, schedule);
+        renderSchedule(date);
+        hideModal();
+        showConfirmation("Booking oppdatert!");
+      });
+
+      document.getElementById("delete-entry").addEventListener("click", function() {
+        schedule[slot][index] = "";
+        saveSchedule(date, schedule);
+        renderSchedule(date);
+        hideModal();
+        showConfirmation("Oppføring slettet!");
+      });
+    }
+
+    // Hent alle unike navn for byttemodalen
+    function getAllDistinctNames(schedule) {
+      const names = new Set();
+      for (let slot in schedule) {
+        schedule[slot].forEach(occupant => {
+          if (occupant.trim() !== "") {
+            names.add(occupant.trim());
+          }
+        });
+      }
+      return Array.from(names);
+    }
+
+    // Funksjon for bytte av lunsjpause med swapping
+    function showSwitchModal() {
+      const date = document.getElementById("booking-date").value;
+      const schedule = loadSchedule(date);
+      const allNames = getAllDistinctNames(schedule);
+
+      let content = `
+        <h3>Bytt lunsjpause</h3>
+        <label>Velg navn:</label>
+        <select id="name-select">
+          <option value="">-- Velg navn --</option>
+          ${ allNames.map(n => `<option value="${n}">${n}</option>`).join('') }
+        </select>
+        <br><br>
+        <label>Velg ny tid:</label>
+        <select id="timeslot-select">
+          <option value="">-- Velg ny tid --</option>
+        </select>
+        <br><br>
+        <button id="switch-confirm-btn">Bekreft bytte</button>
+      `;
+      showModal(content);
+
+      function updateTimeslotOptions() {
+        const selectedName = document.getElementById("name-select").value;
+        const timeslotSelect = document.getElementById("timeslot-select");
+        timeslotSelect.innerHTML = '<option value="">-- Velg ny tid --</option>';
+        timeSlots.forEach(slot => {
+          schedule[slot].forEach((occupant, seatIndex) => {
+            if (occupant.trim().toLowerCase() === selectedName.toLowerCase()) {
+              return; // Filtrer ut alternativ med samme navn
+            }
+            const occupantLabel = occupant.trim() === "" ? "[LEDIG TID]" : occupant;
+            const option = document.createElement("option");
+            option.value = `${slot}||${seatIndex}`;
+            option.textContent = `${slot} – Plass ${seatIndex + 1} (${occupantLabel})`;
+            timeslotSelect.appendChild(option);
+          });
+        });
+      }
+      
+      document.getElementById("name-select").addEventListener("change", updateTimeslotOptions);
+
+      document.getElementById("switch-confirm-btn").addEventListener("click", () => {
+        const nameSelect = document.getElementById("name-select");
+        const timeslotSelect = document.getElementById("timeslot-select");
+        const selectedName = nameSelect.value;
+        const selectedTimeslotVal = timeslotSelect.value;
+
+        if (!selectedName) {
+          alert("Velg et navn.");
+          return;
+        }
+        if (!selectedTimeslotVal) {
+          alert("Velg en ny tid.");
+          return;
+        }
+
+        let oldSlot = null;
+        let oldSeatIndex = null;
+        for (let s in schedule) {
+          schedule[s].forEach((occupant, idx) => {
+            if (occupant.trim().toLowerCase() === selectedName.toLowerCase()) {
+              oldSlot = s;
+              oldSeatIndex = idx;
+            }
+          });
+        }
+
+        const [newSlot, newIndexStr] = selectedTimeslotVal.split("||");
+        const newSeatIndex = parseInt(newIndexStr, 10);
+        const occupantInNewSlot = schedule[newSlot][newSeatIndex].trim();
+
+        if (occupantInNewSlot !== "" && occupantInNewSlot.toLowerCase() !== selectedName.toLowerCase()) {
+          if (!confirm(`Tiden er allerede booket av ${occupantInNewSlot}. Vil du bytte plass med vedkommende?`)) {
+            return;
+          }
+          // Swap: flytt den andre booking til den opprinnelige plassen
+          schedule[oldSlot][oldSeatIndex] = occupantInNewSlot;
+          schedule[newSlot][newSeatIndex] = selectedName;
+        } else {
+          schedule[newSlot][newSeatIndex] = selectedName;
+          schedule[oldSlot][oldSeatIndex] = "";
+        }
+        saveSchedule(date, schedule);
+        renderSchedule(date);
+        hideModal();
+        showConfirmation("Bytte utført!");
+      });
+    }
+
+    function init() {
+      const dateInput = document.getElementById("booking-date");
+      const todayStr = new Date().toISOString().split("T")[0];
+      dateInput.value = todayStr;
+      dateInput.max = todayStr;
+      let minDate = new Date();
+      minDate.setDate(minDate.getDate() - 7);
+      dateInput.min = minDate.toISOString().split("T")[0];
+
+      renderSchedule(todayStr);
+      dateInput.addEventListener("change", function() {
+        renderSchedule(this.value);
+      });
+      document.getElementById("switch-btn").addEventListener("click", showSwitchModal);
+    }
+    document.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>
